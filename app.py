@@ -1,5 +1,5 @@
 import streamlit as st
-from streamlit_folium import folium_static
+from streamlit_folium import st_folium
 import pandas as pd
 import matplotlib.pyplot as plt
 from math import floor
@@ -120,22 +120,9 @@ def run_coverage_analysis(
     total_ids = df_commune["ID_CANA"].unique()
 
     # Appliquer la fonction de placement glouton et de calcul de couverture pour tous les prélocalisateurs
-    coverage_results_df = pd.DataFrame(
-        {"num_prelocators": range(0, max_prelocators + 1)}
-    )
-
-    coverage_results_df["selected_nodes"], coverage_results_df["covered_ids"] = zip(
-        *coverage_results_df["num_prelocators"].apply(
-            lambda x: greedy_node_selection(node_coverage, x)
-        )
-    )
-
-    coverage_results_df["coverage_percentage"] = coverage_results_df[
-        "covered_ids"
-    ].apply(lambda covered_ids: calculate_coverage_percentage(total_ids, covered_ids))
+    selected_nodes, covered_ids = greedy_node_selection(node_coverage, num_prelocators)
 
     # Sauvegarder les nœuds sélectionnés dans un fichier Excel
-    selected_nodes, covered_ids = greedy_node_selection(node_coverage, num_prelocators)
     save_selected_nodes_to_excel(selected_nodes, ", ".join(selected_communes))
 
     # Afficher la solution sur une carte Folium
@@ -143,11 +130,24 @@ def run_coverage_analysis(
         f"Affichage de la solution sur la carte pour les communes sélectionnées..."
     )
     m = plot_solution_on_folium(G, selected_nodes, covered_ids, vanne_nodes)
-    folium_static(m)
+    st_folium(m, width=725)
 
-    st.success(
-        "Analyse de couverture terminée."
-    )  # Indication que le processus est terminé
+    # Utiliser st.markdown avec CSS pour ajuster le style
+    st.markdown(
+        """
+    <style>
+        .stDataFrame {
+            margin-top: 0;  /* Ajustez ce chiffre pour réduire l'espace */
+        }
+    </style>
+    """,
+        unsafe_allow_html=True,
+    )
+
+    # Afficher le tableau
+    st.subheader("Nœuds Sélectionnés")
+    selected_nodes_df = vanne_df[vanne_df["ID_NOEUD"].isin(selected_nodes)]
+    st.dataframe(selected_nodes_df)
 
 
 # Formulaire pour la sélection des communes
