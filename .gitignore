@@ -1,2 +1,4 @@
 env/
 data/created/
+scripts/__pycache__/
+data/created/
