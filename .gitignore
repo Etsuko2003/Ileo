@@ -1,4 +1,3 @@
 env/
-data/created/
-scripts/__pycache__/
-data/created/
+data/created/*.xlsx
+data/maps/
