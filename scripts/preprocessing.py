@@ -1,39 +1,44 @@
 import pandas as pd
 from pyproj import Transformer
-
 from scripts.constants import *
 
+# Initialize the transformer once
+transformer = Transformer.from_crs(2154, 4326, always_xy=True)
 
-# Fonction pour convertir les coordonnées Lambert-93 en GPS décimal
+
+# Function to convert Lambert-93 coordinates to GPS decimal
 def lambert93_to_gps(x: float, y: float) -> tuple:
-    transformer = Transformer.from_crs(2154, 4326, always_xy=True)
     longitude, latitude = transformer.transform(x, y)
     return latitude, longitude
 
 
-def canalisation_with_latitude_longitude() -> pd.DataFrame:
+def canalisation_with_latitude_longitude(cana_df) -> pd.DataFrame:
     """Charge les données des canalisations et ajoute les coordonnées GPS."""
-    # Lecture des fichiers Excel
-    with pd.ExcelFile(CANA_DATA_PATH) as cana_file, pd.ExcelFile(
-        NOEUD_DATA_PATH
-    ) as noeud_file:
-        cana_df = cana_file.parse()
-        noeud_df = noeud_file.parse()
 
-    # Appliquer la conversion aux colonnes de coordonnées Lambert-93
+    # Attempt to read the Excel file and handle possible errors
+    try:
+        with pd.ExcelFile(NOEUD_DATA_PATH) as noeud_file:
+            noeud_df = noeud_file.parse()
+    except FileNotFoundError:
+        raise FileNotFoundError(f"Excel file not found at path: {NOEUD_DATA_PATH}")
+
+    # Apply the conversion to Lambert-93 coordinates
     noeud_df[["LONGITUDE", "LATITUDE"]] = noeud_df.apply(
         lambda row: lambert93_to_gps(row["X"], row["Y"]), axis=1, result_type="expand"
     )
 
-    # Joindre les coordonnées pour ID_NOEUD_1
+    # Join coordinates for ID_NOEUD_1
     cana_df = cana_df.merge(
         noeud_df, how="left", left_on="ID_NOEUD_1", right_on="ID_NOEUD"
     )
-    cana_df.rename(
-        columns={"LATITUDE": "LATITUDE_1", "LONGITUDE": "LONGITUDE_1"}, inplace=True
-    )
+    if "LATITUDE" in noeud_df.columns and "LONGITUDE" in noeud_df.columns:
+        cana_df.rename(
+            columns={"LATITUDE": "LATITUDE_1", "LONGITUDE": "LONGITUDE_1"}, inplace=True
+        )
+    else:
+        raise KeyError("LATITUDE or LONGITUDE column missing in noeud_df.")
 
-    # Joindre les coordonnées pour ID_NOEUD_2
+    # Join coordinates for ID_NOEUD_2
     cana_df = cana_df.merge(
         noeud_df, how="left", left_on="ID_NOEUD_2", right_on="ID_NOEUD"
     )
@@ -41,7 +46,16 @@ def canalisation_with_latitude_longitude() -> pd.DataFrame:
         columns={"LATITUDE": "LATITUDE_2", "LONGITUDE": "LONGITUDE_2"}, inplace=True
     )
 
-    # Garder seulement les colonnes nécessaires
+    # Check for missing coordinates
+    if (
+        cana_df[["LATITUDE_1", "LONGITUDE_1", "LATITUDE_2", "LONGITUDE_2"]]
+        .isnull()
+        .any()
+        .any()
+    ):
+        raise ValueError("Some ID_NOEUD values could not be matched in noeud_df.")
+
+    # Keep only the necessary columns
     cana_df = cana_df[
         [
             "ID_CANA",
@@ -57,5 +71,8 @@ def canalisation_with_latitude_longitude() -> pd.DataFrame:
             "LONGITUDE_2",
         ]
     ]
+
+    # Reset index to avoid potential issues in later processing
+    cana_df.reset_index(drop=True, inplace=True)
 
     return cana_df

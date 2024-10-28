@@ -137,3 +137,39 @@ for index, row in df.iterrows():
 
 # Afficher la carte dans Streamlit
 st_folium(m)
+
+# import streamlit as st
+# import pandas as pd
+# import os
+
+# # Création du dossier pour stocker les fichiers téléchargés s'il n'existe pas
+# upload_folder = "uploads"
+# if not os.path.exists(upload_folder):
+#     os.makedirs(upload_folder)
+
+# # Titre de l'application
+# st.title("Chargement de fichiers spécifiques (.xlsx)")
+
+# # Liste des fichiers attendus
+# expected_files = ["VANNE.xlsx", "CANALISATION.xlsx", "NOEUD.xlsx"]
+
+# # Création d'un uploader de fichiers avec accept_multiple_files
+# uploaded_files = st.file_uploader(
+#     "Choisissez des fichiers Excel", type="xlsx", accept_multiple_files=True
+# )
+
+# # Vérification du nombre de fichiers et de leurs noms
+# if uploaded_files is not None:
+#     for uploaded_file in uploaded_files:
+#         if uploaded_file.name in expected_files:
+#             # Sauvegarde du fichier dans le dossier
+#             file_path = os.path.join(upload_folder, uploaded_file.name)
+#             with open(file_path, "wb") as f:
+#                 f.write(uploaded_file.getbuffer())
+#             st.success(
+#                 f"{uploaded_file.name} a été chargé et sauvegardé dans le dossier '{upload_folder}'."
+#             )
+#         else:
+#             st.warning(
+#                 f"Le fichier '{uploaded_file.name}' n'est pas un fichier autorisé. Veuillez télécharger uniquement : {', '.join(expected_files)}."
+#          )
