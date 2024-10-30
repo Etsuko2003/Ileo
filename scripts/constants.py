@@ -5,6 +5,7 @@ VANNE_DATA_PATH = "data/VANNE.xlsx"
 CANA_DATA_PATH = "data/CANALISATION.xlsx"
 NOEUD_DATA_PATH = "data/NOEUD.xlsx"
 CAN_DATA_PATH = "data/can.xlsx"
+GESTION_DATA_PATH = "data/GESTION.xlsx"
 
 # Valeurs par défaut
 DEFAULT_COVERAGE_DISTANCE = 200.0

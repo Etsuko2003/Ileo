@@ -83,9 +83,13 @@ def plot_solution_on_folium(
         lat2, lon2 = G.nodes[v]["pos"]
 
         color = "gray" if data.get("diameter", float("inf")) > 350 else "yellow"
+        length = G.edges[u, v]["length"]
 
         folium.PolyLine(
-            locations=[(lat1, lon1), (lat2, lon2)], color=color, weight=3
+            locations=[(lat1, lon1), (lat2, lon2)],
+            color=color,
+            weight=3,
+            tooltip=f"{length}",
         ).add_to(m)
 
     # Mise en évidence des nœuds sélectionnés (en rouge)
@@ -93,7 +97,7 @@ def plot_solution_on_folium(
         if node in G.nodes():
             pos = G.nodes[node]["pos"]
             folium.CircleMarker(
-                location=pos, radius=5, color="red", fill=True, tooltip=f"ID: {node}"
+                location=pos, radius=5, color="red", fill=True, tooltip=f"ID={node}"
             ).add_to(m)
 
     # Mise en évidence des canalisations couvertes (en vert)
@@ -101,8 +105,12 @@ def plot_solution_on_folium(
         if G.edges[u, v]["ID_CANA"] in covered_ids:
             lat1, lon1 = G.nodes[u]["pos"]
             lat2, lon2 = G.nodes[v]["pos"]
+            length = G.edges[u, v]["length"]
             folium.PolyLine(
-                locations=[(lat1, lon1), (lat2, lon2)], color="green", weight=3
+                locations=[(lat1, lon1), (lat2, lon2)],
+                color="green",
+                weight=3,
+                tooltip=f"{length}",
             ).add_to(m)
 
     return m

@@ -4,6 +4,7 @@ from streamlit_folium import st_folium
 import pandas as pd
 import matplotlib.pyplot as plt
 from math import floor
+from io import BytesIO
 
 from scripts.graph_coverage import (
     calculate_node_coverages,
@@ -13,11 +14,7 @@ from scripts.graph_coverage import (
     get_prioritized_nodes,
     greedy_node_selection,
 )
-from scripts.preprocessing import (
-    canalisation_with_latitude_longitude,
-    combine_dataframe,
-    create_columns,
-)
+from scripts.preprocessing import combine_dataframe, create_columns
 from scripts.visualization import plot_graph_on_folium, plot_solution_on_folium
 from scripts.constants import *
 
@@ -27,16 +24,11 @@ if not os.path.exists(maps_directory):
 
 # Interface Streamlit
 st.title("Analyse de couverture des canalisations")
-
-
-import os
-import streamlit as st
-import pandas as pd
+pd.set_option("styler.render.max_elements", 10000000)
 
 
 @st.cache_data
 def load_data():
-
     with pd.ExcelFile(VANNE_DATA_PATH) as vanne_file, pd.ExcelFile(
         CAN_DATA_PATH
     ) as cana_file:
@@ -60,33 +52,58 @@ else:
 
 vanne_df = create_columns(vanne_df)
 
+exist = False
 
 if os.path.exists(GESTION_DATA_PATH):
     gestion_df = pd.read_excel(GESTION_DATA_PATH)
     vanne_df = combine_dataframe(vanne_df, gestion_df)
+    exist = True
 
-# Define the editor for vanne_df
-st.header("Éditeur de données Vanne")
-edited_vanne_df = st.data_editor(
-    vanne_df,
-    num_rows="fixed",
-    use_container_width=True,
-    hide_index=True,
-    key="vanne_data_editor",
+# CSS to widen the main container and DataFrame
+st.markdown(
+    """
+    <style>
+        /* Expanding main content area */
+        .main .block-container {
+            max-width: 95%;
+            padding-left: 1rem;
+            padding-right: 1rem;
+        }
+
+        /* Expanding form container */
+        .stForm {
+            max-width: 100% !important;
+            width: 100% !important;
+        }
+
+        /* Widening the form fields */
+        .stForm .stTextInput, .stForm .stSelectbox, .stForm .stButton, .stForm .stNumberInput {
+            width: 100% !important;
+            max-width: 100% !important;
+        }
+
+        /* Adjusting buttons to full width */
+        .stForm .stButton>button {
+            width: 100% !important;
+
+        .button-left {
+        background-color: #1E90FF; /* Bleu */
+        color: white !important;
+        padding: 8px 16px;
+        border-radius: 8px;
+        border: none;
+        }
+        .button-right {
+        background-color: #32CD32; /* Vert */
+        color: white !important;
+        padding: 8px 16px;
+        border-radius: 8px;
+        border: none;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
-
-# Button to update the vanne_df and rerun the analysis
-if st.button("Mettre à jour la carte"):
-    # Store the edited DataFrame back to the session state
-    st.session_state.vanne_df = edited_vanne_df
-    st.success("Les données de vanne ont été mises à jour avec succès.")
-
-    # Rerun the app to reflect changes
-    st.rerun()
-
-# Check if the session state has an updated vanne_df
-if "vanne_df" in st.session_state:
-    vanne_df = st.session_state.vanne_df
 
 
 def display_commune_options(communes: list[str]) -> str:
@@ -181,7 +198,7 @@ def generate_coverage_plot(
 def save_selected_nodes_to_excel(selected_nodes: list[str], commune_name: str) -> None:
     """Sauvegarder les nœuds sélectionnés dans un fichier Excel"""
     vanne_df[vanne_df["ID_NOEUD"].isin(selected_nodes)].to_excel(
-        f"data/created/{commune_name}_noeud_selected.xlsx"
+        f"data/created/{commune_name}_noeud_selected.xlsx", index=False
     )
 
 
@@ -189,17 +206,25 @@ def run_coverage_analysis(
     covering_max_distance: float, selected_communes: list[str], num_prelocators: int
 ):
     """Exécute l'analyse de couverture pour une commune sélectionnée."""
+
+    # Validation des paramètres d'entrée
+    if not selected_communes:
+        raise ValueError("Veuillez sélectionner au moins une commune.")
+    if num_prelocators <= 0:
+        raise ValueError("Le nombre de prélocalisateurs doit être supérieur à zéro.")
+
     st.write(
         f"Traitement des communes: {', '.join(selected_communes)}"
     )  # Affiche les communes en cours de traitement
     df_commune = filter_data_by_commune(cana_df, selected_communes)
 
-    # Calcul de la longueur totale
-    total_length = calculate_total_length(df_commune)
+    # Validation du contenu de df_commune
+    if df_commune.empty:
+        st.write("Aucune donnée pour les communes sélectionnées.")
+        return  # Fin de l'exécution si aucune donnée n'est présente
 
     # Créer le graphe pour la commune
     G = create_graph(df_commune)
-
     vanne_nodes = filter_vanne_nodes(G, vanne_df)
 
     # Calculer la couverture
@@ -216,22 +241,42 @@ def run_coverage_analysis(
     # Sauvegarder les nœuds sélectionnés dans un fichier Excel
     save_selected_nodes_to_excel(selected_nodes, "")
 
-    # Afficher la solution sur une carte Folium
+    # Charger les nœuds sélectionnés depuis le fichier Excel
+    try:
+        st.session_state.selected_nodes_df = pd.read_excel(
+            "data/created/_noeud_selected.xlsx"
+        )
+    except FileNotFoundError:
+        st.write("Erreur : le fichier '_noeud_selected.xlsx' est introuvable.")
+        return
+    except ValueError as e:
+        st.write(f"Erreur de lecture du fichier Excel : {e}")
+        return
+
+    # Vérifier les colonnes du DataFrame après chargement
+    st.session_state.selected_nodes_df["FORCE"] = st.session_state.selected_nodes_df[
+        "FORCE"
+    ].astype(bool)
+    st.session_state.selected_nodes_df["BLOQUE"] = st.session_state.selected_nodes_df[
+        "BLOQUE"
+    ].astype(bool)
+
+    # Affichage de la solution sur une carte Folium
     st.write(
         f"Affichage de la solution sur la carte pour les communes sélectionnées..."
     )
 
-    with st.container():
-        # Affichage de la carte
-        m = plot_solution_on_folium(G, selected_nodes, covered_ids, vanne_nodes)
-        map_file_path = "map.html"
-        m.save(map_file_path)
-        st_folium(m, width=725)
+    # Affichage de la carte
+    m = plot_solution_on_folium(G, selected_nodes, covered_ids, vanne_nodes)
+    map_file_path = f"data/maps/{', '.join(selected_communes)}_map.html"
+    m.save(map_file_path)
 
-        # Affichage du tableau
-        st.subheader("Nœuds Sélectionnés")
-        selected_nodes_df = vanne_df[vanne_df["ID_NOEUD"].isin(selected_nodes)]
-        st.dataframe(selected_nodes_df)
+    st.session_state.map_object = m
+
+
+# Initialise les variables d'état de session si elles n'existent pas encore
+if "show_prelocator_form" not in st.session_state:
+    st.session_state.show_prelocator_form = False
 
 
 # Formulaire pour la sélection des communes
@@ -244,13 +289,14 @@ with st.form(key="commune_selection_form"):
         default=communes[0] if len(communes) > 0 else None,
     )
 
-    # Bouton de validation du formulaire pour générer le plot
-    submit_button_plot = st.form_submit_button(label="Générer le Plot")
+    col_left, col_space, col_right = st.columns([3, 7, 4])
+
+    with col_left:
+        # Bouton pour générer le plot
+        submit_button_plot = st.form_submit_button(label="Générer le Plot")
 
     if submit_button_plot and selected_communes:
-        df_commune = filter_data_by_commune(
-            cana_df, selected_communes
-        )  # Get the first selected commune for initial calculations
+        df_commune = filter_data_by_commune(cana_df, selected_communes)
 
         # Calcul de la longueur totale
         total_length = calculate_total_length(df_commune)
@@ -292,58 +338,122 @@ with st.form(key="commune_selection_form"):
             max_prelocators,
             ", ".join(selected_communes),
         )
+    with col_right:
+        # Bouton pour afficher le formulaire de génération de la carte
+        submit_continue = st.form_submit_button(label="Génération de la carte")
 
-# Formulaire pour la sélection du nombre de prélocalisateurs
-with st.form(key="prelocator_selection_form"):
-    num_prelocators = st.number_input(
-        "Combien de prélocalisateurs souhaitez-vous déployer ?",
-        min_value=1,
-        max_value=200,
-        value=1,
-    )
+    if submit_continue:
 
-    covering_max_distance = st.text_input(
-        "Saisissez la distance maximale que doivent couvrir les prélocalisateurs (ou laissez vide pour utiliser la valeur par défaut)",
-        value=str(DEFAULT_COVERAGE_DISTANCE),
-    )
+        df_commune = filter_data_by_commune(cana_df, selected_communes)
 
-    # Bouton de validation du formulaire pour exécuter l'analyse
-    submit_button_analysis = st.form_submit_button(label="Exécuter l'Analyse")
+        # Calcul de la longueur totale
+        total_length = calculate_total_length(df_commune)
+        st.session_state.show_prelocator_form = (
+            True  # Active l'affichage du deuxième formulaire
+        )
+        st.write(
+            f"Vous avez sélectionné les communes `{', '.join(selected_communes)}`. Passons à la carte..."
+        )
 
-    if submit_button_analysis and selected_communes:
-        try:
-            covering_max_distance = (
-                float(covering_max_distance)
-                if covering_max_distance
-                else DEFAULT_COVERAGE_DISTANCE
-            )
+# Affichage du formulaire de sélection des prélocalisateurs si le bouton a été cliqué
+if st.session_state.show_prelocator_form:
+    with st.form(key="prelocator_selection_form"):
+        num_prelocators = st.number_input(
+            "Combien de prélocalisateurs souhaitez-vous déployer ?",
+            min_value=1,
+            max_value=200,
+            value=1,
+        )
 
-            st.write("Distance maximale convertie en float : ", covering_max_distance)
-            run_coverage_analysis(
-                covering_max_distance, selected_communes, num_prelocators
-            )
-            # Chemin du fichier de la carte
-            map_file_path = f"data/maps/map.html"
+        covering_max_distance = st.text_input(
+            "Saisissez la distance maximale que doivent couvrir les prélocalisateurs (ou laissez vide pour utiliser la valeur par défaut)",
+            value=str(DEFAULT_COVERAGE_DISTANCE),
+        )
 
-            # Vérifiez si la carte a bien été créée avant de proposer le téléchargement
-            if os.path.exists(map_file_path):
-                st.session_state.map_file_path = (
-                    map_file_path  # Stockez le chemin dans l'état de session
+        # Bouton pour exécuter l'analyse de couverture et générer la carte
+        submit_button_analysis = st.form_submit_button(label="Générer la map")
+
+        if submit_button_analysis:
+            try:
+                covering_max_distance = (
+                    float(covering_max_distance)
+                    if covering_max_distance
+                    else DEFAULT_COVERAGE_DISTANCE
                 )
-            else:
-                st.error("Le fichier de carte n'a pas été créé.")
+                if covering_max_distance <= 0:
+                    raise ValueError(
+                        "La distance maximale de couverture doit être supérieure à zéro."
+                    )
 
-        except ValueError:
-            st.error("Veuillez saisir une distance valide.")
+                st.write(
+                    "Distance maximale convertie en float : ", covering_max_distance
+                )
 
-        # Section to display and edit vanne_df
+                run_coverage_analysis(
+                    covering_max_distance, selected_communes, num_prelocators
+                )
 
-# Bouton de téléchargement (en dehors du formulaire)
+                # Chemin du fichier de la carte générée
+                map_file_path = f"data/maps/{', '.join(selected_communes)}_map.html"
+
+                # Vérifie si la carte a bien été créée avant de proposer le téléchargement
+                if os.path.exists(map_file_path):
+                    st.session_state.map_file_path = (
+                        map_file_path  # Stocke le chemin dans l'état de session
+                    )
+                else:
+                    st.error("Le fichier de carte n'a pas été créé.")
+
+            except ValueError as e:
+                st.error(e)
+
+    if "map_object" in st.session_state:
+        st.subheader("Carte générée")
+        # Afficher à nouveau l'objet de carte stocké
+        st_folium(st.session_state.map_object, width=725)
+
+    # Bouton de téléchargement en dehors du formulaire
 if "map_file_path" in st.session_state:
-    # Bouton de téléchargement
     st.download_button(
         label="Télécharger la carte en HTML",
         data=open(st.session_state.map_file_path, "rb").read(),
         file_name=f"{', '.join(selected_communes)}_map.html",
         mime="text/html",
     )
+
+    # Affichage de la dataframe sélectionnée en dehors du formulaire
+if "selected_nodes_df" in st.session_state:
+    st.subheader("Nœuds Sélectionnés")
+    st.dataframe(
+        st.session_state.selected_nodes_df.style.format(precision=0, thousands="")
+    )
+
+    # Section pour modifier la dataframe vanne_df
+    st.subheader("Modifier les données des vannes")
+
+    # Utiliser un data editor pour afficher et modifier vanne_df
+
+    vanne_df_copy = (
+        vanne_df.copy()
+    )  # Faire une copie pour éviter de modifier l'original avant validation
+
+    edited_vanne_df = st.data_editor(
+        vanne_df_copy.style.format(precision=0, thousands=""),
+        column_config={
+            "ID_NOEUD": st.column_config.NumberColumn("ID_NOEUD"),
+            "FORCE": st.column_config.CheckboxColumn("FORCE"),
+            "BLOQUE": st.column_config.CheckboxColumn("BLOQUE"),
+            # Ajoutez d'autres colonnes ici si nécessaire
+        },
+        hide_index=True,
+        num_rows="dynamic",
+    )
+
+    # Si le bouton "Sauvegarder les modifications" est cliqué
+    if st.button("Sauvegarder les modifications"):
+        # Mettre à jour vanne_df avec les données éditées
+        vanne_df.update(edited_vanne_df)
+
+        # Enregistrer le DataFrame modifié dans un fichier Excel
+        vanne_df.to_excel(GESTION_DATA_PATH, index=False)
+        st.success("Modifications sauvegardées avec succès.")

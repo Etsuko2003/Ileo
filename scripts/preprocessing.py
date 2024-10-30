@@ -76,3 +76,60 @@ def canalisation_with_latitude_longitude(cana_df) -> pd.DataFrame:
     cana_df.reset_index(drop=True, inplace=True)
 
     return cana_df
+
+
+def create_columns(vanne_df: pd.DataFrame) -> pd.DataFrame:
+    # Créer une copie du DataFrame d'entrée
+    vanne_df = vanne_df.copy()
+
+    # Ajouter les colonnes avec des valeurs par défaut
+    vanne_df["BLOQUE"] = False
+    vanne_df["BLOQUE"] = vanne_df["BLOQUE"].astype(bool)
+    vanne_df["FORCE"] = False
+    vanne_df["LOCALISATION"] = ""
+
+    return vanne_df
+
+
+def combine_dataframe(vanne_df: pd.DataFrame, gestion_df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Combine two DataFrames by merging and updating specified columns.
+
+    Parameters:
+    vanne_df (pd.DataFrame): DataFrame containing vanne data.
+    gestion_df (pd.DataFrame): DataFrame containing gestion data with updates.
+
+    Returns:
+    pd.DataFrame: A DataFrame containing the combined data with updated columns.
+    """
+
+    # Effectuer une jointure gauche pour combiner les deux DataFrames
+    merged_df = pd.merge(
+        vanne_df,
+        gestion_df,
+        on=["ID_NOEUD", "ID_VANNE"],
+        how="left",
+        suffixes=("", "_gestion"),
+    )
+
+    # Mettre à jour les colonnes de vanne_df avec les valeurs de gestion_df
+    for col in ["BLOQUE", "FORCE", "LOCALISATION"]:
+        merged_df[col] = merged_df[col + "_gestion"].combine_first(merged_df[col])
+
+    # Supprimer les colonnes temporaires ajoutées par la jointure
+    merged_df.drop(
+        columns=[
+            f"{col}_gestion"
+            for col in [
+                "BLOQUE",
+                "FORCE",
+                "LOCALISATION",
+                "DIAMETRE",
+                "ID_CANA_1",
+                "ID_CANA_2",
+            ]
+        ],
+        inplace=True,
+    )
+
+    return merged_df
