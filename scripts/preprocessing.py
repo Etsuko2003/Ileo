@@ -102,8 +102,18 @@ def combine_dataframe(vanne_df: pd.DataFrame, gestion_df: pd.DataFrame) -> pd.Da
     Returns:
     pd.DataFrame: A DataFrame containing the combined data with updated columns.
     """
+    required_cols_vanne = ["ID_NOEUD", "ID_VANNE"]
+    required_cols_gestion = ["ID_NOEUD", "ID_VANNE", "BLOQUE", "FORCE", "LOCALISATION"]
 
-    # Effectuer une jointure gauche pour combiner les deux DataFrames
+    for col in required_cols_vanne:
+        if col not in vanne_df.columns:
+            raise ValueError(f"{col} is missing from vanne_df")
+
+    for col in required_cols_gestion:
+        if col not in gestion_df.columns:
+            raise ValueError(f"{col} is missing from gestion_df")
+
+    # Jointure gauche pour combiner les deux DataFrames
     merged_df = pd.merge(
         vanne_df,
         gestion_df,
@@ -112,24 +122,26 @@ def combine_dataframe(vanne_df: pd.DataFrame, gestion_df: pd.DataFrame) -> pd.Da
         suffixes=("", "_gestion"),
     )
 
-    # Mettre à jour les colonnes de vanne_df avec les valeurs de gestion_df
+    # Mettre à jour les colonnes avec des valeurs de gestion_df
     for col in ["BLOQUE", "FORCE", "LOCALISATION"]:
-        merged_df[col] = merged_df[col + "_gestion"].combine_first(merged_df[col])
+        gestion_col = col + "_gestion"
+        if gestion_col in merged_df.columns:
+            merged_df[col] = merged_df[gestion_col].combine_first(merged_df[col])
 
-    # Supprimer les colonnes temporaires ajoutées par la jointure
-    merged_df.drop(
-        columns=[
-            f"{col}_gestion"
-            for col in [
-                "BLOQUE",
-                "FORCE",
-                "LOCALISATION",
-                "DIAMETRE",
-                "ID_CANA_1",
-                "ID_CANA_2",
-            ]
-        ],
-        inplace=True,
-    )
+    # Supprimer les colonnes temporaires
+    columns_to_drop = [
+        f"{col}_gestion"
+        for col in [
+            "BLOQUE",
+            "FORCE",
+            "LOCALISATION",
+            "DIAMETRE",
+            "ID_CANA_1",
+            "ID_CANA_2",
+        ]
+    ]
+    columns_to_drop = [col for col in columns_to_drop if col in merged_df.columns]
+
+    merged_df.drop(columns=columns_to_drop, inplace=True)
 
     return merged_df
