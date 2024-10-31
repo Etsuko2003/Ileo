@@ -64,6 +64,7 @@ if os.path.exists(GESTION_DATA_PATH):
 
 # Define the editor for vanne_df
 st.header("Éditeur de données Vanne")
+vanne_df[["ID_NOEUD", "ID_VANNE"]] = vanne_df[["ID_NOEUD", "ID_VANNE"]].astype(int)
 edited_vanne_df = st.data_editor(
     vanne_df[["ID_NOEUD", "ID_VANNE", "BLOQUE", "FORCE", "LOCALISATION"]],
     num_rows="fixed",
